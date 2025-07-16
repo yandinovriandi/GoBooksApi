@@ -1,0 +1,285 @@
+openapi: 3.0.0
+info:
+  title: Books API
+  description: API untuk mengelola koleksi buku.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Server Lokal Pengembangan
+
+tags:
+  - name: Books
+    description: Operasi terkait buku
+
+paths:
+  /books:
+    get:
+      summary: Mendapatkan semua buku
+      tags:
+        - Books
+      responses:
+        '200':
+          description: Daftar buku berhasil diambil.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Data buku berhasil diambil
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Book'
+                  total:
+                    type: integer
+                    example: 2
+        '500':
+          description: Error server internal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Menambahkan buku baru
+      tags:
+        - Books
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+            examples:
+              newBook:
+                value:
+                  title: Contoh Judul Buku
+                  author: Penulis Contoh
+                  publication_year: 2023
+      responses:
+        '201':
+          description: Buku berhasil dibuat.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          description: Request tidak valid atau validasi field gagal.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse' # Untuk JSON malformed
+                  - $ref: '#/components/schemas/ValidationErrorResponse' # Untuk validasi field
+        '500':
+          description: Gagal menambahkan buku karena error server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /books/{id}:
+    get:
+      summary: Mendapatkan buku berdasarkan ID
+      tags:
+        - Books
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID unik dari buku
+          schema:
+            type: integer
+            format: int64
+            example: 1
+      responses:
+        '200':
+          description: Detail buku berhasil diambil.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          description: ID buku tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Buku tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Gagal mengambil buku karena error server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Memperbarui buku berdasarkan ID
+      tags:
+        - Books
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID unik dari buku yang akan diperbarui
+          schema:
+            type: integer
+            format: int64
+            example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+            examples:
+              updateBook:
+                value:
+                  title: Judul Buku Baru
+                  author: Penulis Baru
+                  publication_year: 2024
+      responses:
+        '200':
+          description: Buku berhasil diperbarui.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          description: ID buku tidak valid atau request body tidak valid.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/ValidationErrorResponse'
+        '404':
+          description: Buku tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Gagal memperbarui buku karena error server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Menghapus buku berdasarkan ID
+      tags:
+        - Books
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID unik dari buku yang akan dihapus
+          schema:
+            type: integer
+            format: int64
+            example: 7
+      responses:
+        '200':
+          description: Buku berhasil dihapus.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: ID buku tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Buku tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '500':
+          description: Gagal menghapus buku karena error server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Book:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        title:
+          type: string
+          example: Judul Buku
+        author:
+          type: string
+          example: Nama Penulis
+        publication_year:
+          type: integer
+          example: 2023
+      required:
+        - id
+        - title
+        - author
+        - publication_year
+
+    BookInput:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Judul Buku Baru
+        author:
+          type: string
+          example: Nama Penulis Baru
+        publication_year:
+          type: integer
+          example: 2024
+      required:
+        - title
+        - author
+        - publication_year
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: ID buku tidak valid
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Buku tidak ditemukan
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: field_validation
+        message:
+          type: string
+          example: Beberapa field wajib di isi atau tidak valid
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            Title: Title wajib di isi
+            PublicationYear: PublicationYear wajib di isi
