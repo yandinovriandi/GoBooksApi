@@ -45,7 +45,7 @@ go-book-api/
 ⚙️ Instalasi & Setup
 Kloning Repositori:
 
-git clone https://github.com/your-username/go-book-api.git # Ganti dengan URL repo Anda
+git clone https://github.com/yandinovriandi/GoBooksApi.git # Ganti dengan URL repo Anda
 cd go-book-api
 
 Unduh Dependensi:
