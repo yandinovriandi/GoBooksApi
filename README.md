@@ -52,7 +52,7 @@ go-book-api/
 1.  **Kloning Repositori:**
 
     ```bash
-    git clone [https://github.com/yandinovriandi/GoBooksApi.git](https://github.com/yandinovriandi/GoBooksApi.git)
+    git clone https://github.com/yandinovriandi/GoBooksApi.git
     cd go-book-api
     ```
 
