@@ -1,31 +1,128 @@
 package main
 
 import (
-	"database/sql"
+	"database/sql" // Tetap dibutuhkan untuk CRUD buku lama
 	"errors"
 	"fmt"
-	"github.com/go-playground/validator/v10"
 	"log"
 	"net/http"
 	"strconv"
 
+	"go-book-api/controllers" // Import controllers baru
 	"go-book-api/database"
+	"go-book-api/middlewares" // Import middlewares baru
 	"go-book-api/models"
 
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
 
 func main() {
-	database.InitDB()
+	database.InitDB() // Menginisialisasi koneksi DB (GORM dan SQL murni)
 
 	router := gin.Default()
-	router.POST("/books", createBook)
-	router.GET("/books", getBooks)
-	router.GET("/books/:id", getBookByID)
-	router.PUT("/books/:id", updateBook)
-	router.DELETE("/books/:id", deleteBook)
+
+	// Konfigurasi sesi (gunakan secret key yang kuat di produksi!)
+	// Secret key harus panjang dan acak
+	store := cookie.NewStore([]byte("this-is-a-very-secret-key-for-your-gin-session-app-please-change-it-to-a-random-one-in-production-!!!!!!"))
+	router.Use(sessions.Sessions("mysession", store))
+
+	// Muat template HTML dari folder views dan sub-direktorinya
+	router.LoadHTMLGlob("views/**/*.html")
+
+	// Servis file statis (CSS, JS) dari folder public
+	router.Static("/public", "./public")
+
+	// --- Rute API Buku (yang sudah ada) ---
+	// Rute-rute ini tetap berfungsi sebagai API JSON
+	apiRoutes := router.Group("/api")
+	{
+		apiRoutes.POST("/books", createBook)
+		apiRoutes.GET("/books", getBooks)
+		apiRoutes.GET("/books/:id", getBookByID)
+		apiRoutes.PUT("/books/:id", updateBook)
+		apiRoutes.DELETE("/books/:id", deleteBook)
+	}
+
+	// --- Rute Web (untuk Dashboard & Autentikasi) ---
+
+	// Grup rute untuk login dan register (tidak memerlukan otentikasi)
+	authRoutes := router.Group("/")
+	{
+		authRoutes.GET("/login", controllers.ShowLoginPage)
+		authRoutes.POST("/login", controllers.Login)
+		authRoutes.POST("/register", controllers.Register) // Endpoint register (untuk setup awal admin/user)
+	}
+
+	// Grup rute yang memerlukan otentikasi (semua user yang login)
+	authenticatedRoutes := router.Group("/")
+	authenticatedRoutes.Use(middlewares.AuthRequired()) // Semua rute di grup ini memerlukan login
+	{
+		authenticatedRoutes.GET("/dashboard", controllers.ShowDashboardPage)
+		authenticatedRoutes.GET("/logout", controllers.Logout)
+
+		// Contoh rute khusus untuk user biasa (misal halaman profil mereka sendiri)
+		authenticatedRoutes.GET("/profile", func(c *gin.Context) {
+			c.HTML(http.StatusOK, "dashboard.html", gin.H{
+				"Title":          "User Profile",
+				"WelcomeMessage": "Ini halaman profil Anda.",
+				"Username":       sessions.Default(c).Get("username"),
+				"UserRole":       sessions.Default(c).Get("userRole"),
+				"ContentTitle":   "Profil Pengguna",
+				"ContentBody":    "Di sini Anda dapat mengelola informasi profil Anda.",
+			})
+		})
+
+		// --- Rute untuk Manajemen Buku di Dashboard (akan kita buat di langkah selanjutnya) ---
+		// authenticatedRoutes.GET("/dashboard/books", controllers.ShowBookManagementPage)
+		// authenticatedRoutes.GET("/dashboard/books/new", controllers.ShowNewBookForm)
+		// authenticatedRoutes.POST("/dashboard/books/new", controllers.CreateBookFromForm)
+		// ... dll.
+	}
+
+	// Grup rute khusus ADMIN (memerlukan login DAN peran admin)
+	adminRoutes := router.Group("/admin")
+	adminRoutes.Use(middlewares.AuthRequired())         // Memastikan sudah login
+	adminRoutes.Use(middlewares.AuthorizeRole("admin")) // Memastikan role adalah 'admin'
+	{
+		adminRoutes.GET("/", func(c *gin.Context) {
+			c.HTML(http.StatusOK, "dashboard.html", gin.H{
+				"Title":          "Admin Dashboard",
+				"WelcomeMessage": "Selamat datang, Admin " + sessions.Default(c).Get("username").(string) + "!",
+				"Username":       sessions.Default(c).Get("username"),
+				"UserRole":       sessions.Default(c).Get("userRole"),
+				"ContentTitle":   "Area Khusus Admin",
+				"ContentBody":    "Ini adalah halaman yang hanya bisa diakses oleh administrator.",
+			})
+		})
+		adminRoutes.GET("/users", func(c *gin.Context) {
+			c.HTML(http.StatusOK, "dashboard.html", gin.H{
+				"Title":          "Manajemen Pengguna",
+				"WelcomeMessage": "Selamat datang, Admin " + sessions.Default(c).Get("username").(string) + "!",
+				"Username":       sessions.Default(c).Get("username"),
+				"UserRole":       sessions.Default(c).Get("userRole"),
+				"ContentTitle":   "Daftar Pengguna Sistem",
+				"ContentBody":    "Di sini Anda bisa melihat dan mengelola daftar pengguna.",
+			})
+		})
+		// Tambahkan rute admin lainnya di sini, misalnya untuk CRUD buku dari sisi admin
+		// adminRoutes.GET("/books-admin", controllers.ShowAdminBookManagementPage)
+	}
+
+	// Rute default redirect ke login
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(302, "/login")
+	})
+
 	log.Fatal(router.Run(":8080"))
 }
+
+// --- Fungsi-fungsi CRUD Buku yang Sudah Ada (tetap di sini untuk API) ---
+// Perhatikan: fungsi-fungsi ini masih menggunakan database.DB_RAW
+// Jika kamu ingin mengubahnya ke GORM, kamu perlu memodifikasi implementasinya
+// dan menggunakan database.DB_GORM.
 
 func createBook(c *gin.Context) {
 	var book models.Book
@@ -57,7 +154,7 @@ func createBook(c *gin.Context) {
 		return
 	}
 
-	result, err := database.DB.Exec(
+	result, err := database.DB_RAW.Exec( // Menggunakan DB_RAW
 		"INSERT INTO books (title, author, publication_year) VALUES (?, ?, ?)",
 		book.Title, book.Author, book.PublicationYear,
 	)
@@ -77,7 +174,7 @@ func createBook(c *gin.Context) {
 }
 
 func getBooks(c *gin.Context) {
-	rows, err := database.DB.Query("SELECT id, title, author, publication_year FROM books")
+	rows, err := database.DB_RAW.Query("SELECT id, title, author, publication_year FROM books") // Menggunakan DB_RAW
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil buku: " + err.Error()})
 		return
@@ -124,7 +221,7 @@ func getBookByID(c *gin.Context) {
 	}
 
 	var book models.Book
-	row := database.DB.QueryRow("SELECT id, title, author, publication_year FROM books WHERE id = ?", id)
+	row := database.DB_RAW.QueryRow("SELECT id, title, author, publication_year FROM books WHERE id = ?", id) // Menggunakan DB_RAW
 	if err := row.Scan(&book.ID, &book.Title, &book.Author, &book.PublicationYear); err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"message": "Buku tidak ditemukan"})
@@ -175,7 +272,7 @@ func updateBook(c *gin.Context) {
 
 	var existingBook models.Book
 
-	err = database.DB.QueryRow("SELECT id FROM books WHERE id = ?", id).Scan(&existingBook.ID)
+	err = database.DB_RAW.QueryRow("SELECT id FROM books WHERE id = ?", id).Scan(&existingBook.ID) // Menggunakan DB_RAW
 	if err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"message": "Buku tidak ditemukan"})
@@ -185,7 +282,7 @@ func updateBook(c *gin.Context) {
 		return
 	}
 
-	result, err := database.DB.Exec(
+	result, err := database.DB_RAW.Exec( // Menggunakan DB_RAW
 		"UPDATE books SET title = ?, author = ?, publication_year = ? WHERE id = ?",
 		book.Title, book.Author, book.PublicationYear, id,
 	)
@@ -216,7 +313,7 @@ func deleteBook(c *gin.Context) {
 		return
 	}
 
-	result, err := database.DB.Exec("DELETE FROM books WHERE id = ?", id)
+	result, err := database.DB_RAW.Exec("DELETE FROM books WHERE id = ?", id) // Menggunakan DB_RAW
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus buku: " + err.Error()})
 		return
